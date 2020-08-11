@@ -56,6 +56,14 @@ plot(yann_distribution)
 plot(humid_sc, col = "red", add = TRUE)
 plot(humid_yann, col="purple", add=TRUE)
 
+# Note that this works for other zones, too 
+# even if things get a little weird
+trans_sc<-galap_data[galap_data$NOMBRE_=="Santa Cruz" & galap_data$ZONE=="transition",]
+trans_yann<-intersect(trans_sc, yann_distribution)
+plot(yann_distribution)
+plot(trans_sc, col = "green", add = TRUE)
+plot(trans_yann, col="yellow", add=TRUE)
+
 # you can also find things out about the intersection
 humid_yann$AREA
 humid_yann$PERIMETER
