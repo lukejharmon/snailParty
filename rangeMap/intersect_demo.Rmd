@@ -1,0 +1,64 @@
+---
+title: "Intersecting species range with island features"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Purpose
+
+This is a demonstration of how to intersect species' ranges with island features.
+
+## Setting things up
+
+To set things up, let's read in some snail localities as well as some island data.
+
+```{R}
+
+library(raster)
+
+#import snail data
+yann_data <- read.csv("DistributionYannickus.csv")
+#get this ready to use
+coordinates(yann_data) <- c("Longitude", "Latitude")
+proj4string(yann_data) <- CRS("+init=epsg:4326")
+
+#import island data
+galap_data<-shapefile("veg_zones.shp")
+# the prj file is missing - but that's ok for now
+
+```
+Now let's make a species distribution for the snails. For now, we'll use a minimum convex polygon. I think the rest of the script will work with any range that is a polygon.
+
+```{r}
+library(adehabitatHR)
+
+yann_distribution <- mcp(yann_data, percent=100, unout="m2")
+
+# let's see how this looks!
+plot(galap_data)
+plot(yann_distribution, col="pink", add=TRUE)
+# cool.
+
+```
+
+Now, let's try to do an intersection. We will use the "humid" zone of the island of Santa Cruz as an example.
+
+```{r}
+library(sp)
+library(rgeos)
+
+humid_sc<-galap_data[galap_data$NOMBRE_=="Santa Cruz" & galap_data$ZONE=="humid",]
+humid_yann<-intersect(humid_sc, yann_distribution)
+plot(yann_distribution)
+plot(humid_sc, col = "red", add = TRUE)
+plot(humid_yann, col="purple", add=TRUE)
+
+# you can also find things out about the intersection
+humid_yann$AREA
+humid_yann$PERIMETER
+```
+
+
