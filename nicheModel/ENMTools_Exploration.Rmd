@@ -1,0 +1,207 @@
+---
+title: "ENMTools Exploration"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Purpose
+
+To test using the ENMTools package and see if it's a good option for analysis.
+
+**Disclaimer**: ENMTools requires several dependencies to run properly, and the "optional packages" might turn out to not be that optional depending on the analyses you're interested in.
+
+[**ENMTools on GitHub**](https://github.com/danlwarren/ENMTools)
+
+[**ENMTools on CRAN**](https://cran.r-project.org/web/packages/ENMTools/index.html)
+
+## Set Up
+
+First, let's get our libraries, files, and data set up. I'm using Naesiotus wolfi for this exploration because it was recommended to me by Nicole and Christine!
+
+```{r}
+library(ENMTools)
+library(raster)
+
+# Load occurrence points for N. wolfi
+points <- read.csv("wolfi_pts.csv")
+
+# Load background points (right now, just the points for any other species)
+bgpoints <- read.csv("except_wolfi.csv")
+
+# Grab environmental data from WorldClim (doing this for testing because it's easy)
+env <- raster::getData('worldclim', var='bio', res=10)
+
+```
+
+We need to crop env to encompass just Santa Cruz, but to do that, we need to know the proper extent coordinates. The best way I could think of to accomplish that was to simply create a new .tif file in QGIS that included only Santa Cruz and take the coordinates from that.
+
+```{r}
+# Load the tif file made in QGIS
+test_raster <- raster("tif_test.tif")
+
+# Look at the info about the raster to see the extent coordinates
+test_raster
+
+# Now that we have the coordinates, crop env
+env <- crop(env, extent(-90.57163, -90.11387, -0.8867798, -0.3647284))
+
+```
+
+Let's also get our latitude and longitude for the presence and background points organized.
+
+```{r}
+# Presence lat and long
+lat <- points$Latitude
+lon <- points$Longitude
+latlong <- cbind.data.frame(lat, lon)
+
+# Background lat and long
+latbg <- bgpoints$Latitude
+lonbg <- bgpoints$Longitude
+latlongbg <- cbind.data.frame(latbg, lonbg)
+
+```
+
+ENMTools works exclusively wth enmtools.species objects, so let's make one! The components include: range raster, presence points, and background points
+
+```{r}
+# Declare the enmtools.species object using the species name and presence points
+wolfi <- enmtools.species(species.name = "Naesiotus wolfi",
+                          presence.points = latlong)
+
+# ENMTools can create a range raster using presence points as a reference
+wolfi$range <- background.raster.buffer(wolfi$presence.points, 5, mask = env)
+
+# Add the background points to the enmtools.species object
+wolfi$background.points <- latlongbg
+
+# After creating the species object, use check.species to make sure it's set up properly
+wolfi <- check.species(wolfi)
+
+# Take a look at our fancy new object!
+wolfi
+
+```
+
+## Model Time!
+
+Time for the exciting part: actually building a model! For this exploration, I want to test GLM, but it also supports Maxent, Domain, and Bioclim models.
+
+To reduce collinearity, let's trim the set of predictors first.
+
+```{r}
+raster.cor.plot(env)
+
+```
+
+Looking at the MDS, I decided to choose three predictors that are relatively far apart for the next part of the analysis.
+
+```{r}
+env1 <- env[[c("bio3", "bio7", "bio9")]]
+
+```
+
+To build the GLM, I'm going to assume that the formula is very simply additive, but we can write more complex formulas if we feel like certain environmental variables need interactions or polynomial effects.
+
+```{r}
+wolfi.glm <- enmtools.glm(species = wolfi, env = env1, f = pres ~ bio3 + bio7 + bio9)
+
+# Let's take a look
+wolfi.glm
+
+```
+
+This GLM model plot shows the presence points in white, and the suitability of habitat (1 is max suitability, and 0 is least suitability) based on the environmental variables chosen in the formula.
+
+The suitability is represented in such large boxes because this particular WorldClim dataset has a 10 minute resolution (~340 km^2).
+
+## Higher Resolution
+
+Now that we know this works, let's get a higher resolution environment!
+
+```{r}
+# You can get 0.5 minute resolution (~1km^2) WorldClim data if you use a lon and lat for the tile you want
+env2 <- raster::getData('worldclim', var='bio', res=0.5, lon = -90.44, lat = -0.69)
+
+# Crop the environment to the extent we figured out before
+env2 <- crop(env2, extent(-90.57163, -90.11387, -0.8867798, -0.3647284))
+
+# Look at the MDS again to select variables to reduce collinearity
+raster.cor.plot(env2)
+
+# bio2_32, bio3_32, and bio7_32 seem like good choices
+
+# Create a new GLM using the higher resolution
+wolfi.glm2 <- enmtools.glm(species = wolfi, env = env2, f = pres ~ bio2_32 + bio3_32 + bio7_32)
+
+# Take a look!
+wolfi.glm2
+
+```
+
+As you might imagine, you can dramatically change what the plot looks like based on which variables you choose for the formula. Here's one that just takes into account bio1 (Annual Mean Temperature)
+
+```{r}
+wolfi.glm3 <- enmtools.glm(species = wolfi, env = env2, f = pres ~ bio1_32)
+
+wolfi.glm3
+```
+
+For each glm, you can also take a look at marginal response functions. I'm not super familiar with this, but they show the estimated relationship between an environmental predictor and the suitability of habitat. The one for bio3_32 confuses me. Why does the suitability increase at the end if it appears that there are no snails there?
+
+```{r}
+wolfi.glm2$response.plots
+
+```
+
+
+## Concluding Thoughts
+
+ENMTools is a powerful tool for making ENMs. I didn't make another species object in this exploration because I'm not sure what another good one to compare would be, but there are several cool functions for comparing ENMs as well (probability distributions of overlap, similarity test, niche equivalency tests, etc.). I think it's worth moving forward with for other species!
+
+
+## Appendix
+
+Here's a reference of what each bio file represents:
+
+bio1	= Annual Mean Temperature [°C*10]
+
+bio2	= Mean Diurnal Range [°C]
+
+bio3	= Isothermality
+
+bio4	= Temperature Seasonality [standard deviation]
+
+bio5	= Max Temperature of Warmest Month [°C*10]
+
+bio6	= Min Temperature of Coldest Month [°C*10]
+
+bio7	= Temperature Annual Range [°C*10]
+
+bio8	= Mean Temperature of Wettest Quarter [°C*10]
+
+bio9	= Mean Temperature of Driest Quarter [°C*10]
+
+bio10	= Mean Temperature of Warmest Quarter [°C*10]
+
+bio11	= Mean Temperature of Coldest Quarter [°C*10]
+
+bio12	= Annual Precipitation [mm/year]
+
+bio13	= Precipitation of Wettest Month [mm/month]
+
+bio14	= Precipitation of Driest Month [mm/month]
+
+bio15	= Precipitation Seasonality [coefficient of variation]
+
+bio16	= Precipitation of Wettest Quarter [mm/quarter]
+
+bio17	= Precipitation of Driest Quarter [mm/quarter]
+
+bio18	= Precipitation of Warmest Quarter [mm/quarter]
+
+bio19 = Precipitation of Coldest Quarter [mm/quarter]
+
