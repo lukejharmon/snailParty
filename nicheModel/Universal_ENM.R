@@ -3,11 +3,17 @@
 # Load applicable libraries
 library(ENMTools)
 library(raster)
+library(dplyr)
 
-file <- read.csv("SnailCoords_08_10.csv") # Species are S#
+#file <- read.csv("SnailCoords_08_10.csv") # Species are S#
 #file <- read.csv("NaesiotusCoords.csv")   # Species and genus
+#file <- read.csv("NaesiotusDataNoRepeats_October (1).csv")
 
-species_name <- "S12"
+file <- read.csv("NaesiotusData_updatedOctober.csv") # Most recent spreadsheet 10/22/20
+
+#colnames(file) <- c("Species", "Latitude", "Longitude", "Collection.ID", "Note") # Not needed for most recent
+
+species_name <- "Naesiotus ochsneri"
 
 # Grab all row numbers that have this species
 selection <- which(file$Species == species_name)
@@ -27,9 +33,13 @@ anti_selection <- which(file$Species != species_name)
 background_data <- file[anti_selection,]
 
 # Background lat and long
-latbg <- background_data$Latitude
-lonbg <- background_data$Longitude
-latlongbg <- cbind.data.frame(latbg, lonbg)
+lat <- background_data$Latitude
+lon <- background_data$Longitude
+latlongbg <- cbind.data.frame(lat, lon)
+
+# Make sure the background data does not have presence data points
+# Returns all rows from latlongbg WITHOUT a match in latlong
+latlongbg <- anti_join(latlongbg, latlong)
 
 # You can get 0.5 minute resolution (~1km^2) WorldClim data if you use a lon and lat for the tile you want
 env <- raster::getData('worldclim', var='bio', res=0.5, lon = -90.44, lat = -0.69)
@@ -42,7 +52,7 @@ snail <- enmtools.species(species.name = species_name,
                           presence.points = latlong)
 
 # ENMTools can create a range raster using presence points as a reference
-radius <- 0.5   # Radius for circular buffers to draw around points, in meters
+radius <- 5   # Radius for circular buffers to draw around points, in meters
 snail$range <- background.raster.buffer(snail$presence.points, radius, mask = env)
 
 # Add the background points to the enmtools.species object
@@ -57,11 +67,34 @@ snail
 # Check the MDS to choose good variables and prevent colinearity
 raster.cor.plot(env)
 
-# Choosing bio3, bio5, bio7
-env1 <- env[[c("bio3_32", "bio5_32", "bio7_32")]]
+# Choosing bio2, bio5, bio7
+env1 <- env[[c("bio2_32", "bio5_32", "bio7_32")]]
 
 # Build the GLM
-snail.glm <- enmtools.glm(species = snail, env = env1, f = pres ~ bio3_32 + bio5_32 + bio7_32)
+snail.glm <- enmtools.glm(species = snail, env = env1, f = pres ~ bio2_32 + bio5_32 + bio7_32)
 
 # Let's take a look!
 snail.glm
+
+########
+# Can we map the roads on the suitability plot?
+########
+# Grab just the suitability part
+suitable <- snail.glm$suitability
+plot(suitable)    # The colors change, but the legend is helpful
+
+# Read roads shape file
+roads <- shapefile("roads-line.shp")
+
+# Add it to the map
+plot(roads, add = TRUE)
+
+# ISSUE: Roads seem correct when the plot is small, but not when fully zoomed in?
+# Could be the 1920x1080 aspect ratio that's stretching the roads
+
+# One thing Kelly and I tried was changing the proj4string for the roads
+# object to the same proj4string seen in the suitability plot
+
+# It didn't seem to change anything, but here's the code just in case:
+proj4string(roads) <- CRS("+proj=longlat +datum=WGS84 +no_defs")
+
