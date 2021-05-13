@@ -1,0 +1,14 @@
+env <- env[[c("bio2_32", "bio3_32", "bio4_32", "bio7_32", "bio15_32")]]
+bio2 - Mean Diurnal Range
+bio3 - Isothermality
+bio4 - Temperature Seasonality
+bio7 - Temperature Annual Range
+bio15 - Precipitation Seasonality [coefficient of variation]
+
+cti
+eastness
+elevation *
+hli
+NDVI_wet *
+slope
+solar *
